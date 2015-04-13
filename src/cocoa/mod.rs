@@ -127,9 +127,6 @@ fn new_delegate(state: *mut DelegateState) -> IdRef {
 }
 
 pub struct Window {
-    view: IdRef,
-    window: IdRef,
-    context: IdRef,
     state: Box<DelegateState>,
     _delegate: IdRef,
 }
@@ -190,12 +187,12 @@ impl<'a> Iterator for PollEventsIterator<'a> {
                     let window_point = event.locationInWindow();
                     let window: id = msg_send![event, window];
                     let view_point = if window == nil {
-                        let window_rect = self.window.window.convertRectFromScreen_(NSRect::new(window_point, NSSize::new(0.0, 0.0)));
-                        self.window.view.convertPoint_fromView_(window_rect.origin, nil)
+                        let window_rect = self.window.state.window.convertRectFromScreen_(NSRect::new(window_point, NSSize::new(0.0, 0.0)));
+                        self.window.state.view.convertPoint_fromView_(window_rect.origin, nil)
                     } else {
-                        self.window.view.convertPoint_fromView_(window_point, nil)
+                        self.window.state.view.convertPoint_fromView_(window_point, nil)
                     };
-                    let view_rect = NSView::frame(*self.window.view);
+                    let view_rect = NSView::frame(*self.window.state.view);
                     let scale_factor = self.window.hidpi_factor();
                     Some(MouseMoved(((scale_factor * view_point.x as f32) as i32,
                                     (scale_factor * (view_rect.size.height - view_point.y) as f32) as i32)))
@@ -328,9 +325,9 @@ impl Window {
         // Box the state so we can give a pointer to it
         let mut state = Box::new(DelegateState {
             is_closed: false,
-            context: context.clone(),
-            view: view.clone(),
-            window: window.clone(),
+            context: context,
+            view: view,
+            window: window,
             resize_handler: None,
             pending_events: Mutex::new(VecDeque::new()),
         });
@@ -341,9 +338,6 @@ impl Window {
         }
 
         let window = Window {
-            view: view,
-            window: window,
-            context: context,
             state: state,
             _delegate: delegate,
         };
@@ -488,21 +482,21 @@ impl Window {
     pub fn set_title(&self, title: &str) {
         unsafe {
             let title = IdRef::new(NSString::alloc(nil).init_str(title));
-            self.window.setTitle_(*title);
+            self.state.window.setTitle_(*title);
         }
     }
 
     pub fn show(&self) {
-        unsafe { NSWindow::makeKeyAndOrderFront_(*self.window, nil); }
+        unsafe { NSWindow::makeKeyAndOrderFront_(*self.state.window, nil); }
     }
 
     pub fn hide(&self) {
-        unsafe { NSWindow::orderOut_(*self.window, nil); }
+        unsafe { NSWindow::orderOut_(*self.state.window, nil); }
     }
 
     pub fn get_position(&self) -> Option<(i32, i32)> {
         unsafe {
-            let content_rect = NSWindow::contentRectForFrameRect_(*self.window, NSWindow::frame(*self.window));
+            let content_rect = NSWindow::contentRectForFrameRect_(*self.state.window, NSWindow::frame(*self.state.window));
             // NOTE: coordinate system might be inconsistent with other backends
             Some((content_rect.origin.x as i32, content_rect.origin.y as i32))
         }
@@ -511,27 +505,27 @@ impl Window {
     pub fn set_position(&self, x: i32, y: i32) {
         unsafe {
             // NOTE: coordinate system might be inconsistent with other backends
-            NSWindow::setFrameOrigin_(*self.window, NSPoint::new(x as f64, y as f64));
+            NSWindow::setFrameOrigin_(*self.state.window, NSPoint::new(x as f64, y as f64));
         }
     }
 
     pub fn get_inner_size(&self) -> Option<(u32, u32)> {
         unsafe {
-            let view_frame = NSView::frame(*self.view);
+            let view_frame = NSView::frame(*self.state.view);
             Some((view_frame.size.width as u32, view_frame.size.height as u32))
         }
     }
 
     pub fn get_outer_size(&self) -> Option<(u32, u32)> {
         unsafe {
-            let window_frame = NSWindow::frame(*self.window);
+            let window_frame = NSWindow::frame(*self.state.window);
             Some((window_frame.size.width as u32, window_frame.size.height as u32))
         }
     }
 
     pub fn set_inner_size(&self, width: u32, height: u32) {
         unsafe {
-            NSWindow::setContentSize_(*self.window, NSSize::new(width as f64, height as f64));
+            NSWindow::setContentSize_(*self.state.window, NSSize::new(width as f64, height as f64));
         }
     }
 
@@ -562,15 +556,15 @@ impl Window {
     }
 
     pub unsafe fn make_current(&self) {
-        let _: () = msg_send![*self.context, update];
-        self.context.makeCurrentContext();
+        let _: () = msg_send![*self.state.context, update];
+        self.state.context.makeCurrentContext();
     }
 
     pub fn is_current(&self) -> bool {
         unsafe {
             let current = NSOpenGLContext::currentContext(nil);
             if current != nil {
-                let is_equal: BOOL = msg_send![current, isEqual:*self.context];
+                let is_equal: BOOL = msg_send![current, isEqual:*self.state.context];
                 is_equal != NO
             } else {
                 false
@@ -591,7 +585,7 @@ impl Window {
     }
 
     pub fn swap_buffers(&self) {
-        unsafe { self.context.flushBuffer(); }
+        unsafe { self.state.context.flushBuffer(); }
     }
 
     pub fn platform_display(&self) -> *mut libc::c_void {
@@ -659,7 +653,7 @@ impl Window {
 
     pub fn hidpi_factor(&self) -> f32 {
         unsafe {
-            NSWindow::backingScaleFactor(*self.window) as f32
+            NSWindow::backingScaleFactor(*self.state.window) as f32
         }
     }
 
