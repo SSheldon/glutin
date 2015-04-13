@@ -62,61 +62,61 @@ struct DelegateState {
     pending_events: Mutex<VecDeque<Event>>,
 }
 
-    /// Get the delegate class, initiailizing it neccessary
-    fn delegate_class() -> *const Class {
-        use std::sync::{Once, ONCE_INIT};
+/// Get the delegate class, initiailizing it neccessary
+fn delegate_class() -> *const Class {
+    use std::sync::{Once, ONCE_INIT};
 
-        extern fn window_should_close(this: &Object, _: Sel, _: id) -> BOOL {
-            unsafe {
-                let state: *mut libc::c_void = *this.get_ivar("glutinState");
-                let state = state as *mut DelegateState;
-                (*state).is_closed = true;
-
-                (*state).pending_events.lock().unwrap().push_back(Closed);
-            }
-            YES
-        }
-
-        extern fn window_did_resize(this: &Object, _: Sel, _: id) {
-            unsafe {
-                let state: *mut libc::c_void = *this.get_ivar("glutinState");
-                let state = &mut *(state as *mut DelegateState);
-
-                let _: () = msg_send![*state.context, update];
-
-                if let Some(handler) = state.resize_handler {
-                    let rect = NSView::frame(*state.view);
-                    let scale_factor = NSWindow::backingScaleFactor(*state.window) as f32;
-                    (handler)((scale_factor * rect.size.width as f32) as u32,
-                              (scale_factor * rect.size.height as f32) as u32);
-                }
-            }
-        }
-
-        static mut delegate_class: *const Class = 0 as *const Class;
-        static INIT: Once = ONCE_INIT;
-
-        INIT.call_once(|| unsafe {
-            // Create new NSWindowDelegate
-            let superclass = Class::get("NSObject").unwrap();
-            let mut decl = ClassDecl::new(superclass, "GlutinWindowDelegate").unwrap();
-
-            // Add callback methods
-            decl.add_method(sel!(windowShouldClose:),
-                window_should_close as extern fn(&Object, Sel, id) -> BOOL);
-            decl.add_method(sel!(windowDidResize:),
-                window_did_resize as extern fn(&Object, Sel, id));
-
-            // Store internal state as user data
-            decl.add_ivar::<*mut libc::c_void>("glutinState");
-
-            delegate_class = decl.register();
-        });
-
+    extern fn window_should_close(this: &Object, _: Sel, _: id) -> BOOL {
         unsafe {
-            delegate_class
+            let state: *mut libc::c_void = *this.get_ivar("glutinState");
+            let state = state as *mut DelegateState;
+            (*state).is_closed = true;
+
+            (*state).pending_events.lock().unwrap().push_back(Closed);
+        }
+        YES
+    }
+
+    extern fn window_did_resize(this: &Object, _: Sel, _: id) {
+        unsafe {
+            let state: *mut libc::c_void = *this.get_ivar("glutinState");
+            let state = &mut *(state as *mut DelegateState);
+
+            let _: () = msg_send![*state.context, update];
+
+            if let Some(handler) = state.resize_handler {
+                let rect = NSView::frame(*state.view);
+                let scale_factor = NSWindow::backingScaleFactor(*state.window) as f32;
+                (handler)((scale_factor * rect.size.width as f32) as u32,
+                          (scale_factor * rect.size.height as f32) as u32);
+            }
         }
     }
+
+    static mut delegate_class: *const Class = 0 as *const Class;
+    static INIT: Once = ONCE_INIT;
+
+    INIT.call_once(|| unsafe {
+        // Create new NSWindowDelegate
+        let superclass = Class::get("NSObject").unwrap();
+        let mut decl = ClassDecl::new(superclass, "GlutinWindowDelegate").unwrap();
+
+        // Add callback methods
+        decl.add_method(sel!(windowShouldClose:),
+            window_should_close as extern fn(&Object, Sel, id) -> BOOL);
+        decl.add_method(sel!(windowDidResize:),
+            window_did_resize as extern fn(&Object, Sel, id));
+
+        // Store internal state as user data
+        decl.add_ivar::<*mut libc::c_void>("glutinState");
+
+        delegate_class = decl.register();
+    });
+
+    unsafe {
+        delegate_class
+    }
+}
 
 fn new_delegate(state: *mut DelegateState) -> IdRef {
     unsafe {
