@@ -51,7 +51,7 @@ static mut ctrl_pressed: bool = false;
 static mut win_pressed: bool = false;
 static mut alt_pressed: bool = false;
 
-struct DelegateState {
+struct WindowState {
     is_closed: bool,
     context: IdRef,
     view: IdRef,
@@ -69,7 +69,7 @@ fn delegate_class() -> *const Class {
     extern fn window_should_close(this: &Object, _: Sel, _: id) -> BOOL {
         unsafe {
             let state: *mut libc::c_void = *this.get_ivar("glutinState");
-            let state = state as *mut DelegateState;
+            let state = state as *mut WindowState;
             (*state).is_closed = true;
 
             (*state).pending_events.lock().unwrap().push_back(Closed);
@@ -80,7 +80,7 @@ fn delegate_class() -> *const Class {
     extern fn window_did_resize(this: &Object, _: Sel, _: id) {
         unsafe {
             let state: *mut libc::c_void = *this.get_ivar("glutinState");
-            let state = &mut *(state as *mut DelegateState);
+            let state = &mut *(state as *mut WindowState);
 
             let _: () = msg_send![*state.context, update];
 
@@ -118,7 +118,7 @@ fn delegate_class() -> *const Class {
     }
 }
 
-fn new_delegate(state: *mut DelegateState) -> IdRef {
+fn new_delegate(state: *mut WindowState) -> IdRef {
     unsafe {
         let delegate = IdRef::new(msg_send![delegate_class(), new]);
         (&mut **delegate).set_ivar("glutinState", state as *mut libc::c_void);
@@ -127,7 +127,7 @@ fn new_delegate(state: *mut DelegateState) -> IdRef {
 }
 
 pub struct Window {
-    state: Box<DelegateState>,
+    state: Box<WindowState>,
     _delegate: IdRef,
 }
 
@@ -323,7 +323,7 @@ impl Window {
         }
 
         // Box the state so we can give a pointer to it
-        let mut state = Box::new(DelegateState {
+        let mut state = Box::new(WindowState {
             is_closed: false,
             context: context,
             view: view,
